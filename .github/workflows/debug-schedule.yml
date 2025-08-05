@@ -1,83 +1,133 @@
-name: Debug Schedule Test
+name: Badminton Court Monitor
 on:
   schedule:
-    # Test every 2 minutes to see if scheduling works
-    - cron: '*/2 * * * *'
+    # Run every 5 minutes
+    - cron: '*/5 * * * *'
   # Also run manually for testing
   workflow_dispatch:
 
 jobs:
-  debug:
+  monitor:
     runs-on: ubuntu-latest
-    name: Debug Scheduling
+    name: Check Court Availability
     
     steps:
-      - name: Debug - Show scheduling info
-        run: |
-          echo "=== SCHEDULE DEBUG INFO ==="
-          echo "Current time: $(date)"
-          echo "UTC time: $(date -u)"
-          echo "Workflow run ID: ${{ github.run_id }}"
-          echo "Repository: ${{ github.repository }}"
-          echo "Branch: ${{ github.ref }}"
-          echo "Event: ${{ github.event_name }}"
-          echo "Actor: ${{ github.actor }}"
-          echo "Workflow: ${{ github.workflow }}"
-          echo "Job: ${{ github.job }}"
-          echo "Run number: ${{ github.run_number }}"
-          echo "Run attempt: ${{ github.run_attempt }}"
-          echo "=== END SCHEDULE DEBUG ==="
+      - name: Checkout code
+        uses: actions/checkout@v4
         
-      - name: Check GitHub Actions status
-        run: |
-          echo "=== GITHUB ACTIONS STATUS ==="
-          echo "Checking if GitHub Actions is enabled..."
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
           
-          # Check if we can access GitHub API
-          if [ -n "${{ secrets.GITHUB_TOKEN }}" ]; then
-            echo "✅ GITHUB_TOKEN is available"
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Install required dependencies
+        run: |
+          echo "=== INSTALLING DEPENDENCIES ==="
+          npm install node-fetch
+          echo "=== DEPENDENCIES INSTALLED ==="
+        
+      - name: Debug - Check files and environment
+        run: |
+          echo "=== DEBUGGING ENVIRONMENT ==="
+          echo "Current directory: $(pwd)"
+          echo "Files in current directory:"
+          ls -la
+          echo "Node.js version: $(node --version)"
+          echo "NPM version: $(npm --version)"
+          echo "=== END DEBUG ==="
+        
+      - name: Test script syntax
+        run: |
+          echo "=== TESTING SCRIPT SYNTAX ==="
+          if [ -f "monitor-courts-enhanced.js" ]; then
+            echo "✅ File exists"
+            echo "File size: $(wc -l < monitor-courts-enhanced.js) lines"
+            echo "Testing syntax:"
+            node -c monitor-courts-enhanced.js && echo "✅ Syntax check passed" || echo "❌ Syntax check failed"
           else
-            echo "❌ GITHUB_TOKEN is not available"
+            echo "❌ File not found"
           fi
-          
-          echo "=== END STATUS CHECK ==="
+          echo "=== END SYNTAX TEST ==="
         
-      - name: Send debug notification
+      - name: Run enhanced court monitoring
+        id: monitor
         run: |
-          echo "=== SENDING DEBUG NOTIFICATION ==="
+          echo "=== STARTING ENHANCED MONITORING ==="
           echo "Time: $(date)"
           
-          # Send notification to verify this run happened
-          RESPONSE=$(curl -s -H "Content-Type: application/json" \
+          # Run enhanced monitoring script
+          if [ -f "monitor-courts-enhanced.js" ]; then
+            echo "✅ Script file found, running..."
+            
+            # Run the script and capture output with detailed error handling
+            set +e  # Don't exit on error
+            OUTPUT=$(node monitor-courts-enhanced.js 2>&1)
+            EXIT_CODE=$?
+            set -e  # Re-enable exit on error
+            
+            echo "Script exit code: $EXIT_CODE"
+            echo "Full script output:"
+            echo "---START OUTPUT---"
+            echo "$OUTPUT"
+            echo "---END OUTPUT---"
+            
+            if [ $EXIT_CODE -eq 0 ]; then
+              echo "✅ Script executed successfully"
+              
+              # Check if changes were detected
+              if echo "$OUTPUT" | grep -q "=== CHANGES_DETECTED ==="; then
+                echo "changes_detected=true" >> $GITHUB_OUTPUT
+                echo "✅ Changes detected!"
+              else
+                echo "changes_detected=false" >> $GITHUB_OUTPUT
+                echo "✅ No changes detected"
+              fi
+            else
+              echo "❌ Script failed with exit code $EXIT_CODE"
+              echo "changes_detected=false" >> $GITHUB_OUTPUT
+              echo "=== ERROR ANALYSIS ==="
+              echo "Exit code: $EXIT_CODE"
+              echo "Last few lines of output:"
+              echo "$OUTPUT" | tail -20
+              echo "=== END ERROR ANALYSIS ==="
+            fi
+          else
+            echo "❌ Script file not found!"
+            echo "changes_detected=false" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "=== ENHANCED MONITORING COMPLETED ==="
+        
+      - name: Send Test Notification
+        if: steps.monitor.outputs.changes_detected == 'true'
+        run: |
+          echo "=== SENDING NOTIFICATION ==="
+          echo "Time: $(date)"
+          
+          # Send simple notification for now
+          curl -H "Content-Type: application/json" \
                -X POST "https://exp.host/--/api/v2/push/send" \
                -d '{
                  "to": "${{ secrets.EXPO_PUSH_TOKEN }}",
-                 "title": "🔍 Debug: Schedule Test",
-                 "body": "GitHub Actions scheduled run executed at $(date). Run ID: ${{ github.run_id }}",
-                 "data": { 
-                   "source": "debug_schedule", 
-                   "run_id": "${{ github.run_id }}",
-                   "time": "$(date)",
-                   "event": "${{ github.event_name }}"
-                 },
+                 "title": "🏸 Court Available!",
+                 "body": "New courts available. Check the GitHub Actions logs for details.",
+                 "data": { "source": "court_availability" },
                  "sound": "default"
-               }')
+               }'
           
-          echo "Response from Expo: $RESPONSE"
-          
-          if echo "$RESPONSE" | grep -q '"status":"ok"'; then
-            echo "✅ Debug notification sent successfully!"
-          else
-            echo "❌ Debug notification failed:"
-            echo "$RESPONSE"
-          fi
-          
-          echo "=== END DEBUG NOTIFICATION ==="
+          echo "✅ Notification sent!"
         
       - name: Log completion
         run: |
-          echo "=== DEBUG WORKFLOW COMPLETED ==="
+          echo "=== WORKFLOW COMPLETED ==="
           echo "Completion time: $(date)"
           echo "Run ID: ${{ github.run_id }}"
-          echo "Next scheduled run: in 2 minutes"
-          echo "Check your phone for debug notification!" 
+          echo "Changes detected: ${{ steps.monitor.outputs.changes_detected }}"
+          if [ "${{ steps.monitor.outputs.changes_detected }}" == "true" ]; then
+            echo "✅ Notification sent!"
+          else
+            echo "✅ No changes - no notification sent"
+          fi 
