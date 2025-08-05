@@ -1,0 +1,83 @@
+name: Debug Schedule Test
+on:
+  schedule:
+    # Test every 2 minutes to see if scheduling works
+    - cron: '*/2 * * * *'
+  # Also run manually for testing
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    name: Debug Scheduling
+    
+    steps:
+      - name: Debug - Show scheduling info
+        run: |
+          echo "=== SCHEDULE DEBUG INFO ==="
+          echo "Current time: $(date)"
+          echo "UTC time: $(date -u)"
+          echo "Workflow run ID: ${{ github.run_id }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Workflow: ${{ github.workflow }}"
+          echo "Job: ${{ github.job }}"
+          echo "Run number: ${{ github.run_number }}"
+          echo "Run attempt: ${{ github.run_attempt }}"
+          echo "=== END SCHEDULE DEBUG ==="
+        
+      - name: Check GitHub Actions status
+        run: |
+          echo "=== GITHUB ACTIONS STATUS ==="
+          echo "Checking if GitHub Actions is enabled..."
+          
+          # Check if we can access GitHub API
+          if [ -n "${{ secrets.GITHUB_TOKEN }}" ]; then
+            echo "✅ GITHUB_TOKEN is available"
+          else
+            echo "❌ GITHUB_TOKEN is not available"
+          fi
+          
+          echo "=== END STATUS CHECK ==="
+        
+      - name: Send debug notification
+        run: |
+          echo "=== SENDING DEBUG NOTIFICATION ==="
+          echo "Time: $(date)"
+          
+          # Send notification to verify this run happened
+          RESPONSE=$(curl -s -H "Content-Type: application/json" \
+               -X POST "https://exp.host/--/api/v2/push/send" \
+               -d '{
+                 "to": "${{ secrets.EXPO_PUSH_TOKEN }}",
+                 "title": "🔍 Debug: Schedule Test",
+                 "body": "GitHub Actions scheduled run executed at $(date). Run ID: ${{ github.run_id }}",
+                 "data": { 
+                   "source": "debug_schedule", 
+                   "run_id": "${{ github.run_id }}",
+                   "time": "$(date)",
+                   "event": "${{ github.event_name }}"
+                 },
+                 "sound": "default"
+               }')
+          
+          echo "Response from Expo: $RESPONSE"
+          
+          if echo "$RESPONSE" | grep -q '"status":"ok"'; then
+            echo "✅ Debug notification sent successfully!"
+          else
+            echo "❌ Debug notification failed:"
+            echo "$RESPONSE"
+          fi
+          
+          echo "=== END DEBUG NOTIFICATION ==="
+        
+      - name: Log completion
+        run: |
+          echo "=== DEBUG WORKFLOW COMPLETED ==="
+          echo "Completion time: $(date)"
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Next scheduled run: in 2 minutes"
+          echo "Check your phone for debug notification!" 
