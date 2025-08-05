@@ -1,7 +1,9 @@
 name: Badminton Court Monitor
 on:
   schedule:
+    # Run every 5 minutes
     - cron: '*/5 * * * *'
+  # Also run manually for testing
   workflow_dispatch:
 
 jobs:
@@ -24,10 +26,45 @@ jobs:
       - name: Run court monitoring
         run: npm start
         
-      - name: Send Test Notification
+      - name: Debug Secret Access
         run: |
-          echo "Sending test notification..."
-          curl -H "Content-Type: application/json" \
+          echo "=== SECRET DEBUGGING ==="
+          echo "Checking if EXPO_PUSH_TOKEN secret exists..."
+          
+          if [ -n "${{ secrets.EXPO_PUSH_TOKEN }}" ]; then
+            echo "✅ Secret exists and has a value"
+            echo "📏 Token length: ${#EXPO_PUSH_TOKEN}"
+            echo "�� Token starts with: ${EXPO_PUSH_TOKEN:0:20}..."
+            echo "🔍 Token ends with: ...${EXPO_PUSH_TOKEN: -5}"
+            
+            # Check if token format is correct
+            if [[ "$EXPO_PUSH_TOKEN" == ExponentPushToken[* ]]; then
+              echo "✅ Token format looks correct (starts with ExponentPushToken[)"
+            else
+              echo "❌ Token format may be incorrect (should start with ExponentPushToken[)"
+            fi
+            
+            if [[ "$EXPO_PUSH_TOKEN" == *"]" ]]; then
+              echo "✅ Token format looks correct (ends with ])"
+            else
+              echo "❌ Token format may be incorrect (should end with ])"
+            fi
+            
+          else
+            echo "❌ Secret is empty or not set"
+            echo "Please check your GitHub Secrets settings"
+          fi
+          
+          echo "=== END SECRET DEBUGGING ==="
+        
+      - name: Send Test Notification
+        if: secrets.EXPO_PUSH_TOKEN != ''
+        run: |
+          echo "=== SENDING NOTIFICATION ==="
+          echo "Using token: ${EXPO_PUSH_TOKEN:0:20}..."
+          
+          # Send push notification via Expo
+          RESPONSE=$(curl -s -H "Content-Type: application/json" \
                -X POST "https://exp.host/--/api/v2/push/send" \
                -d '{
                  "to": "${{ secrets.EXPO_PUSH_TOKEN }}",
@@ -35,7 +72,22 @@ jobs:
                  "body": "GitHub Actions is monitoring courts every 5 minutes. Last check: $(date)",
                  "data": { "source": "github_actions" },
                  "sound": "default"
-               }'
+               }')
+          
+          echo "Response from Expo: $RESPONSE"
+          
+          # Check if notification was successful
+          if echo "$RESPONSE" | grep -q '"status":"ok"'; then
+            echo "✅ Push notification sent successfully!"
+          elif echo "$RESPONSE" | grep -q '"status":"error"'; then
+            echo "❌ Push notification failed:"
+            echo "$RESPONSE"
+          else
+            echo "⚠️ Unknown response from Expo:"
+            echo "$RESPONSE"
+          fi
+          
+          echo "=== END NOTIFICATION ==="
         
       - name: Log completion
         run: echo "Monitoring cycle completed at $(date)"
