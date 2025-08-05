@@ -26,21 +26,25 @@ jobs:
       - name: Run court monitoring
         id: monitor
         run: |
-          # Run monitoring and capture output
-          OUTPUT=$(npm start)
-          echo "output=$OUTPUT" >> $GITHUB_OUTPUT
+          # Run monitoring and check for changes
+          npm start > monitoring_output.txt 2>&1
           
           # Check if changes were detected
-          if echo "$OUTPUT" | grep -q "Found.*changes"; then
+          if grep -q "Found.*changes" monitoring_output.txt; then
             echo "changes_detected=true" >> $GITHUB_OUTPUT
-            echo "changes_output=$OUTPUT" >> $GITHUB_OUTPUT
+            echo "Changes detected - would send notification"
           else
             echo "changes_detected=false" >> $GITHUB_OUTPUT
+            echo "No changes detected"
           fi
+          
+          # Show the output for debugging
+          cat monitoring_output.txt
         
       - name: Send Push Notification
         if: steps.monitor.outputs.changes_detected == 'true'
         run: |
+          echo "Sending push notification..."
           # Send push notification via Expo
           curl -H "Content-Type: application/json" \
                -X POST "https://exp.host/--/api/v2/push/send" \
