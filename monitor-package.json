@@ -1,0 +1,14 @@
+{
+  "name": "badminton-court-monitor",
+  "version": "1.0.0",
+  "description": "Enhanced badminton court monitoring script",
+  "main": "monitor-courts-enhanced.js",
+  "scripts": {
+    "start": "node monitor-courts-enhanced.js",
+    "monitor": "node monitor-courts-enhanced.js"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
+  },
+  "type": "module"
+} 
