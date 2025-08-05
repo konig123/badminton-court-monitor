@@ -13,15 +13,22 @@ async function fetchCourtData() {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       console.log(`Fetching court data from LCSD API... (Attempt ${attempt}/${maxRetries})`);
+      console.log('API URL: https://data.smartplay.lcsd.gov.hk/rest/cms/api/v1/publ/contents/open-data/badminton/file');
       
+      // Try with different headers and shorter timeout first
       const response = await fetch('https://data.smartplay.lcsd.gov.hk/rest/cms/api/v1/publ/contents/open-data/badminton/file', {
         method: 'GET',
         headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'BadmintonCourtFinder/1.0',
+          'Accept': 'application/json, text/plain, */*',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Cache-Control': 'no-cache',
         },
-        timeout: 30000, // Increased to 30 seconds
+        timeout: 15000, // Try with 15 seconds first
       });
+
+      console.log(`Response status: ${response.status}`);
+      console.log(`Response headers:`, Object.fromEntries(response.headers.entries()));
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -166,6 +173,15 @@ function formatNotificationContent(changes) {
 async function main() {
   try {
     console.log('🏸 Starting enhanced badminton court monitoring...');
+    
+    // Test basic connectivity first
+    console.log('🔍 Testing basic connectivity...');
+    try {
+      const testResponse = await fetch('https://httpbin.org/get', { timeout: 5000 });
+      console.log('✅ Basic internet connectivity: OK');
+    } catch (error) {
+      console.log('❌ Basic internet connectivity failed:', error.message);
+    }
     
     // Load previous data
     const previousData = loadPreviousData();
