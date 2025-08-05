@@ -2,7 +2,7 @@ name: Badminton Court Monitor
 on:
   schedule:
     # Run every 5 minutes
-    - cron: '*/5 * * * *'
+    - cron: '*/10 * * * *'
   # Also run manually for testing
   workflow_dispatch:
 
@@ -23,11 +23,14 @@ jobs:
       - name: Install dependencies
         run: npm install
         
-      - name: Install required dependencies
-        run: |
-          echo "=== INSTALLING DEPENDENCIES ==="
-          npm install node-fetch
-          echo "=== DEPENDENCIES INSTALLED ==="
+                  - name: Install required dependencies
+              run: |
+                echo "=== INSTALLING DEPENDENCIES ==="
+                npm install node-fetch@2
+                echo "=== DEPENDENCIES INSTALLED ==="
+                echo "=== VERIFYING INSTALLATION ==="
+                ls -la node_modules/ | grep node-fetch || echo "node-fetch not found in node_modules"
+                echo "=== END VERIFICATION ==="
         
       - name: Debug - Check files and environment
         run: |
@@ -39,18 +42,26 @@ jobs:
           echo "NPM version: $(npm --version)"
           echo "=== END DEBUG ==="
         
-      - name: Test script syntax
-        run: |
-          echo "=== TESTING SCRIPT SYNTAX ==="
-          if [ -f "monitor-courts-enhanced.js" ]; then
-            echo "✅ File exists"
-            echo "File size: $(wc -l < monitor-courts-enhanced.js) lines"
-            echo "Testing syntax:"
-            node -c monitor-courts-enhanced.js && echo "✅ Syntax check passed" || echo "❌ Syntax check failed"
-          else
-            echo "❌ File not found"
-          fi
-          echo "=== END SYNTAX TEST ==="
+                  - name: Test script syntax and dependencies
+              run: |
+                echo "=== TESTING SCRIPT SYNTAX ==="
+                if [ -f "monitor-courts-enhanced.js" ]; then
+                  echo "✅ File exists"
+                  echo "File size: $(wc -l < monitor-courts-enhanced.js) lines"
+                  echo "Testing syntax:"
+                  node -c monitor-courts-enhanced.js && echo "✅ Syntax check passed" || echo "❌ Syntax check failed"
+                  
+                  echo "=== TESTING DEPENDENCIES ==="
+                  echo "Testing node-fetch import:"
+                  node -e "try { const fetch = require('node-fetch'); console.log('✅ node-fetch loaded successfully'); } catch(e) { console.log('❌ node-fetch error:', e.message); }"
+                  
+                  echo "=== TESTING SCRIPT WITH DEPENDENCIES ==="
+                  echo "Testing first few lines of script:"
+                  head -10 monitor-courts-enhanced.js
+                else
+                  echo "❌ File not found"
+                fi
+                echo "=== END SYNTAX TEST ==="
         
       - name: Run enhanced court monitoring
         id: monitor
