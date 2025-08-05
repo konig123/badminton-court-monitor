@@ -24,7 +24,33 @@ jobs:
         run: npm install
         
       - name: Run court monitoring
-        run: npm start
+        id: monitor
+        run: |
+          # Run monitoring and capture output
+          OUTPUT=$(npm start)
+          echo "output=$OUTPUT" >> $GITHUB_OUTPUT
+          
+          # Check if changes were detected
+          if echo "$OUTPUT" | grep -q "Found.*changes"; then
+            echo "changes_detected=true" >> $GITHUB_OUTPUT
+            echo "changes_output=$OUTPUT" >> $GITHUB_OUTPUT
+          else
+            echo "changes_detected=false" >> $GITHUB_OUTPUT
+          fi
+        
+      - name: Send Push Notification
+        if: steps.monitor.outputs.changes_detected == 'true'
+        run: |
+          # Send push notification via Expo
+          curl -H "Content-Type: application/json" \
+               -X POST "https://exp.host/--/api/v2/push/send" \
+               -d '{
+                 "to": "${{ secrets.EXPO_PUSH_TOKEN }}",
+                 "title": "🏸 Court Available!",
+                 "body": "New courts available in your area. Check the GitHub Actions logs for details.",
+                 "data": { "source": "github_actions" },
+                 "sound": "default"
+               }'
         
       - name: Log completion
         run: echo "Monitoring cycle completed at $(date)"
