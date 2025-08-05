@@ -149,4 +149,4 @@ jobs:
           else
             echo "✅ No changes - no notification sent"
           fi
-          echo "Next scheduled run: in 5 minutes"
+          echo "Next scheduled run: in 5 minute
