@@ -2,7 +2,7 @@ name: Badminton Court Monitor
 on:
   schedule:
     # Run every 5 minutes
-    - cron: '*/5 * * * *'
+    - cron: '*/10 * * * *'
   # Also run manually for testing
   workflow_dispatch:
 
@@ -23,86 +23,107 @@ jobs:
       - name: Install dependencies
         run: npm install
         
-      - name: Debug - Show current time
+      - name: Debug - Show scheduling info
         run: |
-          echo "=== WORKFLOW DEBUG INFO ==="
+          echo "=== MAIN WORKFLOW DEBUG INFO ==="
           echo "Current time: $(date)"
+          echo "UTC time: $(date -u)"
           echo "Workflow run ID: ${{ github.run_id }}"
           echo "Repository: ${{ github.repository }}"
           echo "Branch: ${{ github.ref }}"
-          echo "=== END DEBUG INFO ==="
+          echo "Event: ${{ github.event_name }}"
+          echo "Actor: ${{ github.actor }}"
+          echo "Workflow: ${{ github.workflow }}"
+          echo "Job: ${{ github.job }}"
+          echo "Run number: ${{ github.run_number }}"
+          echo "Run attempt: ${{ github.run_attempt }}"
+          echo "Scheduled time: ${{ github.event.schedule }}"
+          echo "=== END MAIN WORKFLOW DEBUG ==="
         
-      - name: Run court monitoring
+      - name: Run enhanced court monitoring
         id: monitor
         run: |
-          echo "=== STARTING MONITORING ==="
+          echo "=== STARTING ENHANCED MONITORING ==="
           echo "Time: $(date)"
           
-          # Run monitoring and capture output
-          OUTPUT=$(npm start 2>&1)
-          echo "Monitoring output:"
+          # Run enhanced monitoring script
+          OUTPUT=$(node monitor-courts-enhanced.js 2>&1)
+          echo "Enhanced monitoring output:"
           echo "$OUTPUT"
           
-          # Check if changes were detected
-          if echo "$OUTPUT" | grep -q "Found.*changes"; then
+          # Extract changes data if found
+          if echo "$OUTPUT" | grep -q "=== CHANGES_DETECTED ==="; then
             echo "changes_detected=true" >> $GITHUB_OUTPUT
-            echo "changes_output=$OUTPUT" >> $GITHUB_OUTPUT
-            echo "✅ Changes detected!"
+            
+            # Extract the JSON data between markers
+            CHANGES_DATA=$(echo "$OUTPUT" | sed -n '/=== CHANGES_DETECTED ===/,/=== END_CHANGES ===/p' | sed '1d;$d')
+            echo "changes_data<<EOF" >> $GITHUB_OUTPUT
+            echo "$CHANGES_DATA" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+            
+            echo "✅ Changes detected and data extracted!"
           else
             echo "changes_detected=false" >> $GITHUB_OUTPUT
             echo "✅ No changes detected"
           fi
           
-          echo "=== MONITORING COMPLETED ==="
+          echo "=== ENHANCED MONITORING COMPLETED ==="
         
-      - name: Send Test Notification
+      - name: Send Court Availability Notification
+        if: steps.monitor.outputs.changes_detected == 'true'
         run: |
-          echo "=== SENDING TEST NOTIFICATION ==="
+          echo "=== SENDING COURT AVAILABILITY NOTIFICATION ==="
           echo "Time: $(date)"
           
-          # Send test notification to verify system works
+          # Parse the changes data
+          CHANGES_DATA='${{ steps.monitor.outputs.changes_data }}'
+          echo "Changes data: $CHANGES_DATA"
+          
+          # Extract title and body from the JSON
+          TITLE=$(echo "$CHANGES_DATA" | jq -r '.title // "🏸 Court Available!"')
+          BODY=$(echo "$CHANGES_DATA" | jq -r '.body // "New courts available!"')
+          
+          echo "Notification title: $TITLE"
+          echo "Notification body: $BODY"
+          
+          # Send notification with actual court data
           RESPONSE=$(curl -s -H "Content-Type: application/json" \
                -X POST "https://exp.host/--/api/v2/push/send" \
                -d '{
                  "to": "${{ secrets.EXPO_PUSH_TOKEN }}",
-                 "title": "🏸 Court Monitor Active",
-                 "body": "GitHub Actions is monitoring courts. Last check: $(date)",
-                 "data": { "source": "github_actions", "run_id": "${{ github.run_id }}" },
+                 "title": "'"$TITLE"'",
+                 "body": "'"$BODY"'",
+                 "data": { 
+                   "source": "court_availability", 
+                   "run_id": "${{ github.run_id }}",
+                   "event": "${{ github.event_name }}",
+                   "time": "$(date)",
+                   "changes": true
+                 },
                  "sound": "default"
                }')
           
           echo "Response from Expo: $RESPONSE"
           
           if echo "$RESPONSE" | grep -q '"status":"ok"'; then
-            echo "✅ Test notification sent successfully!"
+            echo "✅ Court availability notification sent successfully!"
           else
-            echo "❌ Test notification failed:"
+            echo "❌ Court availability notification failed:"
             echo "$RESPONSE"
           fi
           
-          echo "=== END TEST NOTIFICATION ==="
-        
-      - name: Send Change Notification
-        if: steps.monitor.outputs.changes_detected == 'true'
-        run: |
-          echo "=== SENDING CHANGE NOTIFICATION ==="
-          
-          # Send push notification for actual changes
-          curl -H "Content-Type: application/json" \
-               -X POST "https://exp.host/--/api/v2/push/send" \
-               -d '{
-                 "to": "${{ secrets.EXPO_PUSH_TOKEN }}",
-                 "title": "🏸 Court Available!",
-                 "body": "New courts available in your area. Check the GitHub Actions logs for details.",
-                 "data": { "source": "github_actions", "changes": true },
-                 "sound": "default"
-               }'
-          
-          echo "✅ Change notification sent!"
+          echo "=== END COURT AVAILABILITY NOTIFICATION ==="
         
       - name: Log completion
         run: |
           echo "=== WORKFLOW COMPLETED ==="
           echo "Completion time: $(date)"
           echo "Run ID: ${{ github.run_id }}"
+          echo "Event type: ${{ github.event_name }}"
+          echo "Changes detected: ${{ steps.monitor.outputs.changes_detected }}"
+          if [ "${{ steps.monitor.outputs.changes_detected }}" == "true" ]; then
+            echo "✅ Court availability notification sent!"
+          else
+            echo "✅ No changes - no notification sent"
+          fi
           echo "Next scheduled run: in 5 minutes" 
