@@ -23,7 +23,6 @@ jobs:
       - name: Install dependencies
         run: npm install
         
-      # ADD THE NEW STEP HERE
       - name: Install required dependencies
         run: |
           echo "=== INSTALLING DEPENDENCIES ==="
@@ -36,13 +35,9 @@ jobs:
           echo "Current directory: $(pwd)"
           echo "Files in current directory:"
           ls -la
-          echo "Node.js version:"
-          node --version
-          echo "NPM version:"
-          npm --version
+          echo "Node.js version: $(node --version)"
+          echo "NPM version: $(npm --version)"
           echo "=== END DEBUG ==="
-        
-      # ... rest of your workflow continues
         
       - name: Test script syntax
         run: |
@@ -51,12 +46,9 @@ jobs:
             echo "✅ File exists"
             echo "File size: $(wc -l < monitor-courts-enhanced.js) lines"
             echo "Testing syntax:"
-            node -c monitor-courts-enhanced.js
-            echo "✅ Syntax check passed"
+            node -c monitor-courts-enhanced.js && echo "✅ Syntax check passed" || echo "❌ Syntax check failed"
           else
-            echo "❌ File not found!"
-            echo "Available files:"
-            ls -la *.js
+            echo "❌ File not found"
           fi
           echo "=== END SYNTAX TEST ==="
         
@@ -66,36 +58,25 @@ jobs:
           echo "=== STARTING ENHANCED MONITORING ==="
           echo "Time: $(date)"
           
-          # Run enhanced monitoring script with detailed error handling
+          # Run enhanced monitoring script
           if [ -f "monitor-courts-enhanced.js" ]; then
-            echo "✅ Script file found, attempting to run..."
+            echo "✅ Script file found, running..."
             
-            # Try to run the script and capture all output
-            set +e  # Don't exit on error
+            # Run the script and capture output
             OUTPUT=$(node monitor-courts-enhanced.js 2>&1)
             EXIT_CODE=$?
-            set -e  # Re-enable exit on error
             
             echo "Script exit code: $EXIT_CODE"
-            echo "Full script output:"
-            echo "---START OUTPUT---"
+            echo "Script output:"
             echo "$OUTPUT"
-            echo "---END OUTPUT---"
             
             if [ $EXIT_CODE -eq 0 ]; then
               echo "✅ Script executed successfully"
               
-              # Extract changes data if found
+              # Check if changes were detected
               if echo "$OUTPUT" | grep -q "=== CHANGES_DETECTED ==="; then
                 echo "changes_detected=true" >> $GITHUB_OUTPUT
-                
-                # Extract the JSON data between markers
-                CHANGES_DATA=$(echo "$OUTPUT" | sed -n '/=== CHANGES_DETECTED ===/,/=== END_CHANGES ===/p' | sed '1d;$d')
-                echo "changes_data<<EOF" >> $GITHUB_OUTPUT
-                echo "$CHANGES_DATA" >> $GITHUB_OUTPUT
-                echo "EOF" >> $GITHUB_OUTPUT
-                
-                echo "✅ Changes detected and data extracted!"
+                echo "✅ Changes detected!"
               else
                 echo "changes_detected=false" >> $GITHUB_OUTPUT
                 echo "✅ No changes detected"
@@ -103,13 +84,6 @@ jobs:
             else
               echo "❌ Script failed with exit code $EXIT_CODE"
               echo "changes_detected=false" >> $GITHUB_OUTPUT
-              
-              # Show detailed error information
-              echo "=== ERROR ANALYSIS ==="
-              echo "Exit code: $EXIT_CODE"
-              echo "Last few lines of output:"
-              echo "$OUTPUT" | tail -20
-              echo "=== END ERROR ANALYSIS ==="
             fi
           else
             echo "❌ Script file not found!"
@@ -118,61 +92,33 @@ jobs:
           
           echo "=== ENHANCED MONITORING COMPLETED ==="
         
-      - name: Send Court Availability Notification
+      - name: Send Test Notification
         if: steps.monitor.outputs.changes_detected == 'true'
         run: |
-          echo "=== SENDING COURT AVAILABILITY NOTIFICATION ==="
+          echo "=== SENDING NOTIFICATION ==="
           echo "Time: $(date)"
           
-          # Parse the changes data
-          CHANGES_DATA='${{ steps.monitor.outputs.changes_data }}'
-          echo "Changes data: $CHANGES_DATA"
-          
-          # Extract title and body from the JSON
-          TITLE=$(echo "$CHANGES_DATA" | jq -r '.title // "🏸 Court Available!"')
-          BODY=$(echo "$CHANGES_DATA" | jq -r '.body // "New courts available!"')
-          
-          echo "Notification title: $TITLE"
-          echo "Notification body: $BODY"
-          
-          # Send notification with actual court data
-          RESPONSE=$(curl -s -H "Content-Type: application/json" \
+          # Send simple notification for now
+          curl -H "Content-Type: application/json" \
                -X POST "https://exp.host/--/api/v2/push/send" \
                -d '{
                  "to": "${{ secrets.EXPO_PUSH_TOKEN }}",
-                 "title": "'"$TITLE"'",
-                 "body": "'"$BODY"'",
-                 "data": { 
-                   "source": "court_availability", 
-                   "run_id": "${{ github.run_id }}",
-                   "event": "${{ github.event_name }}",
-                   "time": "$(date)",
-                   "changes": true
-                 },
+                 "title": "🏸 Court Available!",
+                 "body": "New courts available. Check the GitHub Actions logs for details.",
+                 "data": { "source": "court_availability" },
                  "sound": "default"
-               }')
+               }'
           
-          echo "Response from Expo: $RESPONSE"
-          
-          if echo "$RESPONSE" | grep -q '"status":"ok"'; then
-            echo "✅ Court availability notification sent successfully!"
-          else
-            echo "❌ Court availability notification failed:"
-            echo "$RESPONSE"
-          fi
-          
-          echo "=== END COURT AVAILABILITY NOTIFICATION ==="
+          echo "✅ Notification sent!"
         
       - name: Log completion
         run: |
           echo "=== WORKFLOW COMPLETED ==="
           echo "Completion time: $(date)"
           echo "Run ID: ${{ github.run_id }}"
-          echo "Event type: ${{ github.event_name }}"
           echo "Changes detected: ${{ steps.monitor.outputs.changes_detected }}"
           if [ "${{ steps.monitor.outputs.changes_detected }}" == "true" ]; then
-            echo "✅ Court availability notification sent!"
+            echo "✅ Notification sent!"
           else
             echo "✅ No changes - no notification sent"
-          fi
-          echo "Next scheduled run: in 5 minute
+          fi 
