@@ -2,7 +2,7 @@ name: Badminton Court Monitor
 on:
   schedule:
     # Run every 5 minutes
-    - cron: '*/10 * * * *'
+    - cron: '*/5 * * * *'
   # Also run manually for testing
   workflow_dispatch:
 
@@ -62,13 +62,17 @@ jobs:
           if [ -f "monitor-courts-enhanced.js" ]; then
             echo "✅ Script file found, running..."
             
-            # Run the script and capture output
+            # Run the script and capture output with detailed error handling
+            set +e  # Don't exit on error
             OUTPUT=$(node monitor-courts-enhanced.js 2>&1)
             EXIT_CODE=$?
+            set -e  # Re-enable exit on error
             
             echo "Script exit code: $EXIT_CODE"
-            echo "Script output:"
+            echo "Full script output:"
+            echo "---START OUTPUT---"
             echo "$OUTPUT"
+            echo "---END OUTPUT---"
             
             if [ $EXIT_CODE -eq 0 ]; then
               echo "✅ Script executed successfully"
@@ -84,6 +88,11 @@ jobs:
             else
               echo "❌ Script failed with exit code $EXIT_CODE"
               echo "changes_detected=false" >> $GITHUB_OUTPUT
+              echo "=== ERROR ANALYSIS ==="
+              echo "Exit code: $EXIT_CODE"
+              echo "Last few lines of output:"
+              echo "$OUTPUT" | tail -20
+              echo "=== END ERROR ANALYSIS ==="
             fi
           else
             echo "❌ Script file not found!"
