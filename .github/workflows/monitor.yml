@@ -1,9 +1,7 @@
 name: Badminton Court Monitor
 on:
   schedule:
-    # Run every 5 minutes
     - cron: '*/5 * * * *'
-  # Also run manually for testing
   workflow_dispatch:
 
 jobs:
@@ -24,34 +22,17 @@ jobs:
         run: npm install
         
       - name: Run court monitoring
-        id: monitor
-        run: |
-          # Run monitoring and check for changes
-          npm start > monitoring_output.txt 2>&1
-          
-          # Check if changes were detected
-          if grep -q "Found.*changes" monitoring_output.txt; then
-            echo "changes_detected=true" >> $GITHUB_OUTPUT
-            echo "Changes detected - would send notification"
-          else
-            echo "changes_detected=false" >> $GITHUB_OUTPUT
-            echo "No changes detected"
-          fi
-          
-          # Show the output for debugging
-          cat monitoring_output.txt
+        run: npm start
         
-      - name: Send Push Notification
-        if: steps.monitor.outputs.changes_detected == 'true'
+      - name: Send Test Notification
         run: |
-          echo "Sending push notification..."
-          # Send push notification via Expo
+          echo "Sending test notification..."
           curl -H "Content-Type: application/json" \
                -X POST "https://exp.host/--/api/v2/push/send" \
                -d '{
                  "to": "${{ secrets.EXPO_PUSH_TOKEN }}",
-                 "title": "🏸 Court Available!",
-                 "body": "New courts available in your area. Check the GitHub Actions logs for details.",
+                 "title": "🏸 Court Monitor Active",
+                 "body": "GitHub Actions is monitoring courts every 5 minutes. Last check: $(date)",
                  "data": { "source": "github_actions" },
                  "sound": "default"
                }'
