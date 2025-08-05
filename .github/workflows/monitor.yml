@@ -23,77 +23,86 @@ jobs:
       - name: Install dependencies
         run: npm install
         
-      - name: Run court monitoring
-        run: npm start
-        
-      - name: Debug Secret Access
+      - name: Debug - Show current time
         run: |
-          echo "=== SECRET DEBUGGING ==="
-          echo "Checking if EXPO_PUSH_TOKEN secret exists..."
+          echo "=== WORKFLOW DEBUG INFO ==="
+          echo "Current time: $(date)"
+          echo "Workflow run ID: ${{ github.run_id }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref }}"
+          echo "=== END DEBUG INFO ==="
+        
+      - name: Run court monitoring
+        id: monitor
+        run: |
+          echo "=== STARTING MONITORING ==="
+          echo "Time: $(date)"
           
-          if [ -n "${{ secrets.EXPO_PUSH_TOKEN }}" ]; then
-            echo "✅ Secret exists and has a value"
-            echo "📏 Token length: ${#EXPO_PUSH_TOKEN}"
-            echo " Token starts with: ${EXPO_PUSH_TOKEN:0:20}..."
-            echo "🔍 Token ends with: ...${EXPO_PUSH_TOKEN: -5}"
-            
-            # Check if token format is correct
-            if [[ "$EXPO_PUSH_TOKEN" == ExponentPushToken[* ]]; then
-              echo "✅ Token format looks correct (starts with ExponentPushToken[)"
-            else
-              echo "❌ Token format may be incorrect (should start with ExponentPushToken[)"
-            fi
-            
-            if [[ "$EXPO_PUSH_TOKEN" == *"]" ]]; then
-              echo "✅ Token format looks correct (ends with ])"
-            else
-              echo "❌ Token format may be incorrect (should end with ])"
-            fi
-            
+          # Run monitoring and capture output
+          OUTPUT=$(npm start 2>&1)
+          echo "Monitoring output:"
+          echo "$OUTPUT"
+          
+          # Check if changes were detected
+          if echo "$OUTPUT" | grep -q "Found.*changes"; then
+            echo "changes_detected=true" >> $GITHUB_OUTPUT
+            echo "changes_output=$OUTPUT" >> $GITHUB_OUTPUT
+            echo "✅ Changes detected!"
           else
-            echo "❌ Secret is empty or not set"
-            echo "Please check your GitHub Secrets settings"
+            echo "changes_detected=false" >> $GITHUB_OUTPUT
+            echo "✅ No changes detected"
           fi
           
-          echo "=== END SECRET DEBUGGING ==="
+          echo "=== MONITORING COMPLETED ==="
         
       - name: Send Test Notification
         run: |
-          echo "=== SENDING NOTIFICATION ==="
+          echo "=== SENDING TEST NOTIFICATION ==="
+          echo "Time: $(date)"
           
-          # Check if secret exists before using it
-          if [ -n "${{ secrets.EXPO_PUSH_TOKEN }}" ]; then
-            echo "Using token: ${EXPO_PUSH_TOKEN:0:20}..."
-            
-            # Send push notification via Expo
-            RESPONSE=$(curl -s -H "Content-Type: application/json" \
-                 -X POST "https://exp.host/--/api/v2/push/send" \
-                 -d '{
-                   "to": "${{ secrets.EXPO_PUSH_TOKEN }}",
-                   "title": "🏸 Court Monitor Active",
-                   "body": "GitHub Actions is monitoring courts every 5 minutes. Last check: $(date)",
-                   "data": { "source": "github_actions" },
-                   "sound": "default"
-                 }')
-            
-            echo "Response from Expo: $RESPONSE"
-            
-            # Check if notification was successful
-            if echo "$RESPONSE" | grep -q '"status":"ok"'; then
-              echo "✅ Push notification sent successfully!"
-            elif echo "$RESPONSE" | grep -q '"status":"error"'; then
-              echo "❌ Push notification failed:"
-              echo "$RESPONSE"
-            else
-              echo "⚠️ Unknown response from Expo:"
-              echo "$RESPONSE"
-            fi
+          # Send test notification to verify system works
+          RESPONSE=$(curl -s -H "Content-Type: application/json" \
+               -X POST "https://exp.host/--/api/v2/push/send" \
+               -d '{
+                 "to": "${{ secrets.EXPO_PUSH_TOKEN }}",
+                 "title": "🏸 Court Monitor Active",
+                 "body": "GitHub Actions is monitoring courts. Last check: $(date)",
+                 "data": { "source": "github_actions", "run_id": "${{ github.run_id }}" },
+                 "sound": "default"
+               }')
+          
+          echo "Response from Expo: $RESPONSE"
+          
+          if echo "$RESPONSE" | grep -q '"status":"ok"'; then
+            echo "✅ Test notification sent successfully!"
           else
-            echo "❌ EXPO_PUSH_TOKEN secret not found"
-            echo "Please add your push token to GitHub Secrets"
+            echo "❌ Test notification failed:"
+            echo "$RESPONSE"
           fi
           
-          echo "=== END NOTIFICATION ==="
+          echo "=== END TEST NOTIFICATION ==="
+        
+      - name: Send Change Notification
+        if: steps.monitor.outputs.changes_detected == 'true'
+        run: |
+          echo "=== SENDING CHANGE NOTIFICATION ==="
+          
+          # Send push notification for actual changes
+          curl -H "Content-Type: application/json" \
+               -X POST "https://exp.host/--/api/v2/push/send" \
+               -d '{
+                 "to": "${{ secrets.EXPO_PUSH_TOKEN }}",
+                 "title": "🏸 Court Available!",
+                 "body": "New courts available in your area. Check the GitHub Actions logs for details.",
+                 "data": { "source": "github_actions", "changes": true },
+                 "sound": "default"
+               }'
+          
+          echo "✅ Change notification sent!"
         
       - name: Log completion
-        run: echo "Monitoring cycle completed at $(date)"
+        run: |
+          echo "=== WORKFLOW COMPLETED ==="
+          echo "Completion time: $(date)"
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Next scheduled run: in 5 minutes" 
