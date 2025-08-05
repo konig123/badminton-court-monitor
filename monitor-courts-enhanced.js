@@ -5,30 +5,42 @@ import path from 'path';
 // File to store previous data
 const DATA_FILE = 'previous_court_data.json';
 
-// Function to fetch court data from LCSD API
+// Function to fetch court data from LCSD API with retry logic
 async function fetchCourtData() {
-  try {
-    console.log('Fetching court data from LCSD API...');
-    
-    const response = await fetch('https://data.smartplay.lcsd.gov.hk/rest/cms/api/v1/publ/contents/open-data/badminton/file', {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'User-Agent': 'BadmintonCourtFinder/1.0',
-      },
-      timeout: 10000,
-    });
+  const maxRetries = 3;
+  const retryDelay = 5000; // 5 seconds
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`Fetching court data from LCSD API... (Attempt ${attempt}/${maxRetries})`);
+      
+      const response = await fetch('https://data.smartplay.lcsd.gov.hk/rest/cms/api/v1/publ/contents/open-data/badminton/file', {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'BadmintonCourtFinder/1.0',
+        },
+        timeout: 30000, // Increased to 30 seconds
+      });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log(`Successfully fetched ${data.length} court records`);
+      return data;
+    } catch (error) {
+      console.error(`Error fetching court data (Attempt ${attempt}/${maxRetries}):`, error.message);
+      
+      if (attempt === maxRetries) {
+        console.error('All retry attempts failed');
+        return null;
+      }
+      
+      console.log(`Retrying in ${retryDelay/1000} seconds...`);
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
     }
-
-    const data = await response.json();
-    console.log(`Successfully fetched ${data.length} court records`);
-    return data;
-  } catch (error) {
-    console.error('Error fetching court data:', error);
-    return null;
   }
 }
 
