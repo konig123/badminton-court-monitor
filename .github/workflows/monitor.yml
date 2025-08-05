@@ -2,7 +2,7 @@ name: Badminton Court Monitor
 on:
   schedule:
     # Run every 5 minutes
-    - cron: '*/10 * * * *'
+    - cron: '*/5 * * * *'
   # Also run manually for testing
   workflow_dispatch:
 
