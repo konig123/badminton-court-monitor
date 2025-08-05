@@ -23,22 +23,33 @@ jobs:
       - name: Install dependencies
         run: npm install
         
-      - name: Debug - Show scheduling info
+      - name: Debug - Check files and environment
         run: |
-          echo "=== MAIN WORKFLOW DEBUG INFO ==="
-          echo "Current time: $(date)"
-          echo "UTC time: $(date -u)"
-          echo "Workflow run ID: ${{ github.run_id }}"
-          echo "Repository: ${{ github.repository }}"
-          echo "Branch: ${{ github.ref }}"
-          echo "Event: ${{ github.event_name }}"
-          echo "Actor: ${{ github.actor }}"
-          echo "Workflow: ${{ github.workflow }}"
-          echo "Job: ${{ github.job }}"
-          echo "Run number: ${{ github.run_number }}"
-          echo "Run attempt: ${{ github.run_attempt }}"
-          echo "Scheduled time: ${{ github.event.schedule }}"
-          echo "=== END MAIN WORKFLOW DEBUG ==="
+          echo "=== DEBUGGING ENVIRONMENT ==="
+          echo "Current directory: $(pwd)"
+          echo "Files in current directory:"
+          ls -la
+          echo "Node.js version:"
+          node --version
+          echo "NPM version:"
+          npm --version
+          echo "=== END DEBUG ==="
+        
+      - name: Test script syntax
+        run: |
+          echo "=== TESTING SCRIPT SYNTAX ==="
+          if [ -f "monitor-courts-enhanced.js" ]; then
+            echo "✅ File exists"
+            echo "File size: $(wc -l < monitor-courts-enhanced.js) lines"
+            echo "Testing syntax:"
+            node -c monitor-courts-enhanced.js
+            echo "✅ Syntax check passed"
+          else
+            echo "❌ File not found!"
+            echo "Available files:"
+            ls -la *.js
+          fi
+          echo "=== END SYNTAX TEST ==="
         
       - name: Run enhanced court monitoring
         id: monitor
@@ -46,25 +57,37 @@ jobs:
           echo "=== STARTING ENHANCED MONITORING ==="
           echo "Time: $(date)"
           
-          # Run enhanced monitoring script
-          OUTPUT=$(node monitor-courts-enhanced.js 2>&1)
-          echo "Enhanced monitoring output:"
-          echo "$OUTPUT"
-          
-          # Extract changes data if found
-          if echo "$OUTPUT" | grep -q "=== CHANGES_DETECTED ==="; then
-            echo "changes_detected=true" >> $GITHUB_OUTPUT
+          # Run enhanced monitoring script with error handling
+          if [ -f "monitor-courts-enhanced.js" ]; then
+            OUTPUT=$(node monitor-courts-enhanced.js 2>&1)
+            EXIT_CODE=$?
+            echo "Script exit code: $EXIT_CODE"
+            echo "Enhanced monitoring output:"
+            echo "$OUTPUT"
             
-            # Extract the JSON data between markers
-            CHANGES_DATA=$(echo "$OUTPUT" | sed -n '/=== CHANGES_DETECTED ===/,/=== END_CHANGES ===/p' | sed '1d;$d')
-            echo "changes_data<<EOF" >> $GITHUB_OUTPUT
-            echo "$CHANGES_DATA" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
-            
-            echo "✅ Changes detected and data extracted!"
+            if [ $EXIT_CODE -eq 0 ]; then
+              # Extract changes data if found
+              if echo "$OUTPUT" | grep -q "=== CHANGES_DETECTED ==="; then
+                echo "changes_detected=true" >> $GITHUB_OUTPUT
+                
+                # Extract the JSON data between markers
+                CHANGES_DATA=$(echo "$OUTPUT" | sed -n '/=== CHANGES_DETECTED ===/,/=== END_CHANGES ===/p' | sed '1d;$d')
+                echo "changes_data<<EOF" >> $GITHUB_OUTPUT
+                echo "$CHANGES_DATA" >> $GITHUB_OUTPUT
+                echo "EOF" >> $GITHUB_OUTPUT
+                
+                echo "✅ Changes detected and data extracted!"
+              else
+                echo "changes_detected=false" >> $GITHUB_OUTPUT
+                echo "✅ No changes detected"
+              fi
+            else
+              echo "❌ Script failed with exit code $EXIT_CODE"
+              echo "changes_detected=false" >> $GITHUB_OUTPUT
+            fi
           else
+            echo "❌ Script file not found!"
             echo "changes_detected=false" >> $GITHUB_OUTPUT
-            echo "✅ No changes detected"
           fi
           
           echo "=== ENHANCED MONITORING COMPLETED ==="
@@ -126,4 +149,4 @@ jobs:
           else
             echo "✅ No changes - no notification sent"
           fi
-          echo "Next scheduled run: in 5 minutes" 
+          echo "Next scheduled run: in 5 minutes"
