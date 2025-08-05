@@ -15,7 +15,7 @@ async function fetchCourtData() {
       console.log(`Fetching court data from LCSD API... (Attempt ${attempt}/${maxRetries})`);
       console.log('API URL: https://data.smartplay.lcsd.gov.hk/rest/cms/api/v1/publ/contents/open-data/badminton/file');
       
-      // Try with different headers and shorter timeout first
+      // Try with different headers and much longer timeout for large data
       const response = await fetch('https://data.smartplay.lcsd.gov.hk/rest/cms/api/v1/publ/contents/open-data/badminton/file', {
         method: 'GET',
         headers: {
@@ -24,7 +24,7 @@ async function fetchCourtData() {
           'Accept-Language': 'en-US,en;q=0.9',
           'Cache-Control': 'no-cache',
         },
-        timeout: 15000, // Try with 15 seconds first
+        timeout: 60000, // Increased to 60 seconds for large data transfer
       });
 
       console.log(`Response status: ${response.status}`);
@@ -34,8 +34,10 @@ async function fetchCourtData() {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
+      console.log('📥 Starting to read response data...');
       const data = await response.json();
-      console.log(`Successfully fetched ${data.length} court records`);
+      console.log(`✅ Successfully fetched ${data.length} court records`);
+      console.log(`📊 Data size: ${JSON.stringify(data).length} characters`);
       return data;
     } catch (error) {
       console.error(`Error fetching court data (Attempt ${attempt}/${maxRetries}):`, error.message);
