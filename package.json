@@ -1,0 +1,14 @@
+{
+  "name": "badminton-court-monitor",
+  "version": "1.0.0",
+  "description": "Automated badminton court availability monitoring",
+  "main": "monitor-courts.js",
+  "scripts": {
+    "start": "node monitor-courts.js",
+    "test": "node monitor-courts.js"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.0"
+  },
+  "type": "module"
+}
