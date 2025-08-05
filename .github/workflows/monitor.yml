@@ -23,6 +23,13 @@ jobs:
       - name: Install dependencies
         run: npm install
         
+      # ADD THE NEW STEP HERE
+      - name: Install required dependencies
+        run: |
+          echo "=== INSTALLING DEPENDENCIES ==="
+          npm install node-fetch
+          echo "=== DEPENDENCIES INSTALLED ==="
+        
       - name: Debug - Check files and environment
         run: |
           echo "=== DEBUGGING ENVIRONMENT ==="
@@ -34,6 +41,8 @@ jobs:
           echo "NPM version:"
           npm --version
           echo "=== END DEBUG ==="
+        
+      # ... rest of your workflow continues
         
       - name: Test script syntax
         run: |
