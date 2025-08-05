@@ -34,7 +34,7 @@ jobs:
           if [ -n "${{ secrets.EXPO_PUSH_TOKEN }}" ]; then
             echo "✅ Secret exists and has a value"
             echo "📏 Token length: ${#EXPO_PUSH_TOKEN}"
-            echo "�� Token starts with: ${EXPO_PUSH_TOKEN:0:20}..."
+            echo " Token starts with: ${EXPO_PUSH_TOKEN:0:20}..."
             echo "🔍 Token ends with: ...${EXPO_PUSH_TOKEN: -5}"
             
             # Check if token format is correct
