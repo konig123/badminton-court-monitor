@@ -1,8 +1,8 @@
-name: Badminton Court Monitor
+name: Badminton Court Monitor v2
 on:
   schedule:
     # Run every 5 minutes
-    - cron: '*/5 * * * *'
+    - cron: '*/10 * * * *'
   # Also run manually for testing
   workflow_dispatch:
 
@@ -31,6 +31,13 @@ jobs:
           echo "=== VERIFYING INSTALLATION ==="
           ls -la node_modules/ | grep node-fetch || echo "node-fetch not found in node_modules"
           echo "=== END VERIFICATION ==="
+        
+      - name: Download previous data (if exists)
+        uses: actions/download-artifact@v4
+        with:
+          name: previous-court-data
+          path: ./
+        continue-on-error: true
         
       - name: Debug - Check files and environment
         run: |
@@ -92,6 +99,12 @@ jobs:
               if echo "$OUTPUT" | grep -q "=== CHANGES_DETECTED ==="; then
                 echo "changes_detected=true" >> $GITHUB_OUTPUT
                 echo "✅ Changes detected!"
+                
+                # Extract changes data for notification
+                CHANGES_DATA=$(echo "$OUTPUT" | sed -n '/=== CHANGES_DETECTED ===/,/=== END_CHANGES ===/p' | sed '1d;$d')
+                echo "changes_data<<EOF" >> $GITHUB_OUTPUT
+                echo "$CHANGES_DATA" >> $GITHUB_OUTPUT
+                echo "EOF" >> $GITHUB_OUTPUT
               else
                 echo "changes_detected=false" >> $GITHUB_OUTPUT
                 echo "✅ No changes detected"
@@ -112,24 +125,44 @@ jobs:
           
           echo "=== ENHANCED MONITORING COMPLETED ==="
         
-      - name: Send Test Notification
+      - name: Send Court Availability Notification
         if: steps.monitor.outputs.changes_detected == 'true'
         run: |
-          echo "=== SENDING NOTIFICATION ==="
+          echo "=== SENDING COURT AVAILABILITY NOTIFICATION ==="
           echo "Time: $(date)"
           
-          # Send simple notification for now
+          # Parse the changes data
+          CHANGES_DATA='${{ steps.monitor.outputs.changes_data }}'
+          echo "Changes data: $CHANGES_DATA"
+          
+          # Extract title and body from the changes data
+          TITLE=$(echo "$CHANGES_DATA" | jq -r '.title // "🏸 Court Available!"')
+          BODY=$(echo "$CHANGES_DATA" | jq -r '.body // "New courts available!"')
+          
+          echo "Sending notification:"
+          echo "Title: $TITLE"
+          echo "Body: $BODY"
+          
+          # Send the notification
           curl -H "Content-Type: application/json" \
                -X POST "https://exp.host/--/api/v2/push/send" \
                -d '{
                  "to": "${{ secrets.EXPO_PUSH_TOKEN }}",
-                 "title": "🏸 Court Available!",
-                 "body": "New courts available. Check the GitHub Actions logs for details.",
+                 "title": "'"$TITLE"'",
+                 "body": "'"$BODY"'",
                  "data": { "source": "court_availability" },
                  "sound": "default"
                }'
           
-          echo "✅ Notification sent!"
+          echo "✅ Court availability notification sent!"
+        
+      - name: Upload current data for next run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: previous-court-data
+          path: previous_court_data.json
+          retention-days: 1
         
       - name: Log completion
         run: |
