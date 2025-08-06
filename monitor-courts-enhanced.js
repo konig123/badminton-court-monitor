@@ -57,11 +57,18 @@ async function fetchCourtData() {
 function loadPreviousData() {
   try {
     if (fs.existsSync(DATA_FILE)) {
+      console.log(`📂 Found previous data file: ${DATA_FILE}`);
       const data = fs.readFileSync(DATA_FILE, 'utf8');
-      return JSON.parse(data);
+      const parsedData = JSON.parse(data);
+      console.log(`📊 Loaded ${parsedData.length} previous court records`);
+      return parsedData;
+    } else {
+      console.log(`📂 No previous data file found: ${DATA_FILE}`);
+      console.log('🔍 This is the first run or previous data was not available');
     }
   } catch (error) {
-    console.error('Error loading previous data:', error);
+    console.error('❌ Error loading previous data:', error);
+    console.log('🔍 Will treat this as first run');
   }
   return null;
 }
@@ -186,6 +193,7 @@ async function main() {
     }
     
     // Load previous data
+    console.log('📂 Loading previous court data...');
     const previousData = loadPreviousData();
     
     // Fetch current data
@@ -196,6 +204,7 @@ async function main() {
     }
 
     // Detect changes
+    console.log('🔍 Detecting changes...');
     const changes = detectChanges(currentData, previousData);
     
     // Format notification content
@@ -216,6 +225,7 @@ async function main() {
     }
     
     // Save current data for next comparison
+    console.log('💾 Saving current data for next comparison...');
     saveCurrentData(currentData);
     
     console.log('✅ Enhanced monitoring cycle completed');
