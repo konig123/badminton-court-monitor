@@ -2,7 +2,7 @@ name: Badminton Court Monitor v2
 on:
   schedule:
     # Run every 5 minutes
-    - cron: '*/10 * * * *'
+    - cron: '*/5 * * * *'
   # Also run manually for testing
   workflow_dispatch:
 
@@ -32,12 +32,51 @@ jobs:
           ls -la node_modules/ | grep node-fetch || echo "node-fetch not found in node_modules"
           echo "=== END VERIFICATION ==="
         
+      - name: List available artifacts
+        run: |
+          echo "=== LISTING AVAILABLE ARTIFACTS ==="
+          echo "Current workflow run ID: ${{ github.run_id }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Note: Artifacts are typically available from previous runs"
+          echo "=== END ARTIFACT LIST ==="
+        
+      - name: Check previous run artifacts
+        run: |
+          echo "=== CHECKING PREVIOUS RUN ARTIFACTS ==="
+          # Get the previous run ID (current - 1)
+          PREV_RUN_ID=$(({{ github.run_id }} - 1))
+          echo "Checking previous run ID: $PREV_RUN_ID"
+          
+          # Try to list artifacts from previous run
+          curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+               "https://api.github.com/repos/${{ github.repository }}/actions/runs/$PREV_RUN_ID/artifacts" | \
+               jq -r '.artifacts[] | "\(.name) - \(.created_at)"' 2>/dev/null || echo "Could not fetch artifacts from previous run"
+          echo "=== END PREVIOUS RUN CHECK ==="
+        
       - name: Download previous data (if exists)
+        id: download
         uses: actions/download-artifact@v4
         with:
           name: previous-court-data
           path: ./
         continue-on-error: true
+        
+      - name: Check downloaded data
+        run: |
+          echo "=== CHECKING DOWNLOADED DATA ==="
+          echo "Download step exit code: ${{ steps.download.outcome }}"
+          
+          if [ -f "previous_court_data.json" ]; then
+            echo "✅ Previous data file found!"
+            echo "File size: $(ls -lh previous_court_data.json | awk '{print $5}')"
+            echo "First few lines:"
+            head -3 previous_court_data.json
+          else
+            echo "❌ Previous data file not found"
+            echo "Available files:"
+            ls -la *.json 2>/dev/null || echo "No JSON files found"
+          fi
+          echo "=== END DOWNLOAD CHECK ==="
         
       - name: Debug - Check files and environment
         run: |
