@@ -26,52 +26,11 @@ jobs:
       - name: Install required dependencies
         run: |
           echo "=== INSTALLING DEPENDENCIES ==="
-          npm install node-fetch@2
+          npm install node-fetch@2 firebase-admin@12
           echo "=== DEPENDENCIES INSTALLED ==="
           echo "=== VERIFYING INSTALLATION ==="
-          ls -la node_modules/ | grep node-fetch || echo "node-fetch not found in node_modules"
+          ls -la node_modules/ | grep -E "(node-fetch|firebase)" || echo "Dependencies not found in node_modules"
           echo "=== END VERIFICATION ==="
-        
-      - name: List available artifacts
-        run: |
-          echo "=== LISTING AVAILABLE ARTIFACTS ==="
-          echo "Current workflow run ID: ${{ github.run_id }}"
-          echo "Repository: ${{ github.repository }}"
-          echo "Note: Artifacts are typically available from previous runs"
-          echo "=== END ARTIFACT LIST ==="
-        
-      - name: Check previous run artifacts
-        run: |
-          echo "=== CHECKING PREVIOUS RUN ARTIFACTS ==="
-          echo "Current workflow run ID: ${{ github.run_id }}"
-          echo "Repository: ${{ github.repository }}"
-          echo "Note: Checking if artifacts exist from previous runs..."
-          echo "=== END PREVIOUS RUN CHECK ==="
-        
-      - name: Download previous data (if exists)
-        id: download
-        uses: actions/download-artifact@v4
-        with:
-          name: previous-court-data
-          path: ./
-        continue-on-error: true
-        
-      - name: Check downloaded data
-        run: |
-          echo "=== CHECKING DOWNLOADED DATA ==="
-          echo "Download step exit code: ${{ steps.download.outcome }}"
-          
-          if [ -f "previous_court_data.json" ]; then
-            echo "✅ Previous data file found!"
-            echo "File size: $(ls -lh previous_court_data.json | awk '{print $5}')"
-            echo "First few lines:"
-            head -3 previous_court_data.json
-          else
-            echo "❌ Previous data file not found"
-            echo "Available files:"
-            ls -la *.json 2>/dev/null || echo "No JSON files found"
-          fi
-          echo "=== END DOWNLOAD CHECK ==="
         
       - name: Debug - Check files and environment
         run: |
@@ -86,37 +45,53 @@ jobs:
       - name: Test script syntax and dependencies
         run: |
           echo "=== TESTING SCRIPT SYNTAX ==="
-          if [ -f "monitor-courts-enhanced.js" ]; then
-            echo "✅ File exists"
-            echo "File size: $(wc -l < monitor-courts-enhanced.js) lines"
+          if [ -f "monitor-courts-firebase.js" ]; then
+            echo "✅ Firebase script exists"
+            echo "File size: $(wc -l < monitor-courts-firebase.js) lines"
             echo "Testing syntax:"
-            node -c monitor-courts-enhanced.js && echo "✅ Syntax check passed" || echo "❌ Syntax check failed"
+            node -c monitor-courts-firebase.js && echo "✅ Syntax check passed" || echo "❌ Syntax check failed"
             
             echo "=== TESTING DEPENDENCIES ==="
+            echo "Testing Firebase Admin import:"
+            node -e "try { const admin = require('firebase-admin'); console.log('✅ Firebase Admin loaded successfully'); } catch(e) { console.log('❌ Firebase Admin error:', e.message); }"
+            
             echo "Testing node-fetch import:"
             node -e "try { const fetch = require('node-fetch'); console.log('✅ node-fetch loaded successfully'); } catch(e) { console.log('❌ node-fetch error:', e.message); }"
-            
-            echo "=== TESTING SCRIPT WITH DEPENDENCIES ==="
-            echo "Testing first few lines of script:"
-            head -10 monitor-courts-enhanced.js
           else
-            echo "❌ File not found"
+            echo "❌ Firebase script not found"
           fi
           echo "=== END SYNTAX TEST ==="
         
-      - name: Run enhanced court monitoring
+      - name: Run Firebase-powered court monitoring
         id: monitor
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
         run: |
-          echo "=== STARTING ENHANCED MONITORING ==="
+          echo "=== STARTING FIREBASE-POWERED MONITORING ==="
           echo "Time: $(date)"
           
-          # Run enhanced monitoring script
-          if [ -f "monitor-courts-enhanced.js" ]; then
-            echo "✅ Script file found, running..."
+          # Check if Firebase credentials are set
+          if [ -z "$FIREBASE_PROJECT_ID" ]; then
+            echo "❌ FIREBASE_PROJECT_ID not set"
+            exit 1
+          fi
+          
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_KEY" ]; then
+            echo "❌ FIREBASE_SERVICE_ACCOUNT_KEY not set"
+            exit 1
+          fi
+          
+          echo "✅ Firebase credentials configured"
+          echo "Project ID: $FIREBASE_PROJECT_ID"
+          
+          # Run Firebase-powered monitoring script
+          if [ -f "monitor-courts-firebase.js" ]; then
+            echo "✅ Firebase script file found, running..."
             
             # Run the script and capture output with detailed error handling
             set +e  # Don't exit on error
-            OUTPUT=$(node monitor-courts-enhanced.js 2>&1)
+            OUTPUT=$(node monitor-courts-firebase.js 2>&1)
             EXIT_CODE=$?
             set -e  # Re-enable exit on error
             
@@ -153,11 +128,11 @@ jobs:
               echo "=== END ERROR ANALYSIS ==="
             fi
           else
-            echo "❌ Script file not found!"
+            echo "❌ Firebase script file not found!"
             echo "changes_detected=false" >> $GITHUB_OUTPUT
           fi
           
-          echo "=== ENHANCED MONITORING COMPLETED ==="
+          echo "=== FIREBASE-POWERED MONITORING COMPLETED ==="
         
       - name: Send Court Availability Notification
         if: steps.monitor.outputs.changes_detected == 'true'
@@ -189,14 +164,6 @@ jobs:
                }'
           
           echo "✅ Court availability notification sent!"
-        
-      - name: Upload current data for next run
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: previous-court-data
-          path: previous_court_data.json
-          retention-days: 1
         
       - name: Log completion
         run: |
