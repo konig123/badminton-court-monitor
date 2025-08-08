@@ -1,0 +1,178 @@
+name: Badminton Court Monitor v3
+on:
+  schedule:
+    # Run every 5 minutes
+    - cron: '*/5 * * * *'
+  # Also run manually for testing
+  workflow_dispatch:
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    name: Check Court Availability
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: npm install
+        
+      - name: Install required dependencies
+        run: |
+          echo "=== INSTALLING DEPENDENCIES ==="
+          npm install node-fetch@2 firebase-admin@12
+          echo "=== DEPENDENCIES INSTALLED ==="
+          echo "=== VERIFYING INSTALLATION ==="
+          ls -la node_modules/ | grep -E "(node-fetch|firebase)" || echo "Dependencies not found in node_modules"
+          echo "=== END VERIFICATION ==="
+        
+      - name: Debug - Check files and environment
+        run: |
+          echo "=== DEBUGGING ENVIRONMENT ==="
+          echo "Current directory: $(pwd)"
+          echo "Files in current directory:"
+          ls -la
+          echo "Node.js version: $(node --version)"
+          echo "NPM version: $(npm --version)"
+          echo "=== END DEBUG ==="
+        
+      - name: Test script syntax and dependencies
+        run: |
+          echo "=== TESTING SCRIPT SYNTAX ==="
+          if [ -f "monitor-courts-firebase.js" ]; then
+            echo "✅ Firebase script exists"
+            echo "File size: $(wc -l < monitor-courts-firebase.js) lines"
+            echo "Testing syntax:"
+            node -c monitor-courts-firebase.js && echo "✅ Syntax check passed" || echo "❌ Syntax check failed"
+            
+            echo "=== TESTING DEPENDENCIES ==="
+            echo "Testing Firebase Admin import:"
+            node -e "try { const admin = require('firebase-admin'); console.log('✅ Firebase Admin loaded successfully'); } catch(e) { console.log('❌ Firebase Admin error:', e.message); }"
+            
+            echo "Testing node-fetch import:"
+            node -e "try { const fetch = require('node-fetch'); console.log('✅ node-fetch loaded successfully'); } catch(e) { console.log('❌ node-fetch error:', e.message); }"
+          else
+            echo "❌ Firebase script not found"
+          fi
+          echo "=== END SYNTAX TEST ==="
+        
+      - name: Run Firebase-powered court monitoring
+        id: monitor
+        env:
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          FIREBASE_SERVICE_ACCOUNT_KEY: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_KEY }}
+        run: |
+          echo "=== STARTING FIREBASE-POWERED MONITORING ==="
+          echo "Time: $(date)"
+          
+          # Check if Firebase credentials are set
+          if [ -z "$FIREBASE_PROJECT_ID" ]; then
+            echo "❌ FIREBASE_PROJECT_ID not set"
+            exit 1
+          fi
+          
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_KEY" ]; then
+            echo "❌ FIREBASE_SERVICE_ACCOUNT_KEY not set"
+            exit 1
+          fi
+          
+          echo "✅ Firebase credentials configured"
+          echo "Project ID: $FIREBASE_PROJECT_ID"
+          
+          # Run Firebase-powered monitoring script
+          if [ -f "monitor-courts-firebase.js" ]; then
+            echo "✅ Firebase script file found, running..."
+            
+            # Run the script and capture output with detailed error handling
+            set +e  # Don't exit on error
+            OUTPUT=$(node monitor-courts-firebase.js 2>&1)
+            EXIT_CODE=$?
+            set -e  # Re-enable exit on error
+            
+            echo "Script exit code: $EXIT_CODE"
+            echo "Full script output:"
+            echo "---START OUTPUT---"
+            echo "$OUTPUT"
+            echo "---END OUTPUT---"
+            
+            if [ $EXIT_CODE -eq 0 ]; then
+              echo "✅ Script executed successfully"
+              
+              # Check if changes were detected
+              if echo "$OUTPUT" | grep -q "=== CHANGES_DETECTED ==="; then
+                echo "changes_detected=true" >> $GITHUB_OUTPUT
+                echo "✅ Changes detected!"
+                
+                # Extract changes data for notification
+                CHANGES_DATA=$(echo "$OUTPUT" | sed -n '/=== CHANGES_DETECTED ===/,/=== END_CHANGES ===/p' | sed '1d;$d')
+                echo "changes_data<<EOF" >> $GITHUB_OUTPUT
+                echo "$CHANGES_DATA" >> $GITHUB_OUTPUT
+                echo "EOF" >> $GITHUB_OUTPUT
+              else
+                echo "changes_detected=false" >> $GITHUB_OUTPUT
+                echo "✅ No changes detected"
+              fi
+            else
+              echo "❌ Script failed with exit code $EXIT_CODE"
+              echo "changes_detected=false" >> $GITHUB_OUTPUT
+              echo "=== ERROR ANALYSIS ==="
+              echo "Exit code: $EXIT_CODE"
+              echo "Last few lines of output:"
+              echo "$OUTPUT" | tail -20
+              echo "=== END ERROR ANALYSIS ==="
+            fi
+          else
+            echo "❌ Firebase script file not found!"
+            echo "changes_detected=false" >> $GITHUB_OUTPUT
+          fi
+          
+          echo "=== FIREBASE-POWERED MONITORING COMPLETED ==="
+        
+      - name: Send Court Availability Notification
+        if: steps.monitor.outputs.changes_detected == 'true'
+        run: |
+          echo "=== SENDING COURT AVAILABILITY NOTIFICATION ==="
+          echo "Time: $(date)"
+          
+          # Parse the changes data
+          CHANGES_DATA='${{ steps.monitor.outputs.changes_data }}'
+          echo "Changes data: $CHANGES_DATA"
+          
+          # Extract title and body from the changes data
+          TITLE=$(echo "$CHANGES_DATA" | jq -r '.title // "🏸 Court Available!"')
+          BODY=$(echo "$CHANGES_DATA" | jq -r '.body // "New courts available!"')
+          
+          echo "Sending notification:"
+          echo "Title: $TITLE"
+          echo "Body: $BODY"
+          
+          # Send the notification
+          curl -H "Content-Type: application/json" \
+               -X POST "https://exp.host/--/api/v2/push/send" \
+               -d '{
+                 "to": "${{ secrets.EXPO_PUSH_TOKEN }}",
+                 "title": "'"$TITLE"'",
+                 "body": "'"$BODY"'",
+                 "data": { "source": "court_availability" },
+                 "sound": "default"
+               }'
+          
+          echo "✅ Court availability notification sent!"
+        
+      - name: Log completion
+        run: |
+          echo "=== WORKFLOW COMPLETED ==="
+          echo "Completion time: $(date)"
+          echo "Run ID: ${{ github.run_id }}"
+          echo "Changes detected: ${{ steps.monitor.outputs.changes_detected }}"
+          if [ "${{ steps.monitor.outputs.changes_detected }}" == "true" ]; then
+            echo "✅ Notification sent!"
+          else
+            echo "✅ No changes - no notification sent"
+          fi 
