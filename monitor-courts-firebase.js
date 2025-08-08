@@ -12,7 +12,8 @@ admin.initializeApp({
 
 const db = admin.firestore();
 const COLLECTION_NAME = 'court_data';
-const DOCUMENT_ID = 'latest';
+const METADATA_DOC_ID = 'metadata';
+const CHUNK_SIZE = 100; // Store 100 records per document to stay under 1MB limit
 
 // Function to fetch court data from LCSD API with retry logic
 async function fetchCourtData() {
@@ -60,24 +61,41 @@ async function fetchCourtData() {
   }
 }
 
-// Function to load previous data from Firebase
+// Function to load previous data from Firebase (chunked)
 async function loadPreviousData() {
   try {
     console.log('📂 Loading previous court data from Firebase...');
     
-    const docRef = db.collection(COLLECTION_NAME).doc(DOCUMENT_ID);
-    const doc = await docRef.get();
+    // First, get metadata to know how many chunks exist
+    const metadataRef = db.collection(COLLECTION_NAME).doc(METADATA_DOC_ID);
+    const metadataDoc = await metadataRef.get();
     
-    if (doc.exists) {
-      const data = doc.data();
-      console.log(`📊 Loaded ${data.data ? data.data.length : 0} previous court records from Firebase`);
-      console.log(`📅 Last updated: ${data.timestamp ? data.timestamp.toDate() : 'Unknown'}`);
-      return data.data || [];
-    } else {
+    if (!metadataDoc.exists) {
       console.log('📂 No previous data found in Firebase');
       console.log('🔍 This is the first run');
       return null;
     }
+    
+    const metadata = metadataDoc.data();
+    const totalChunks = metadata.totalChunks;
+    console.log(`📊 Loading ${totalChunks} data chunks from Firebase...`);
+    
+    // Load all chunks
+    const allData = [];
+    for (let i = 0; i < totalChunks; i++) {
+      const chunkRef = db.collection(COLLECTION_NAME).doc(`chunk_${i}`);
+      const chunkDoc = await chunkRef.get();
+      
+      if (chunkDoc.exists) {
+        const chunkData = chunkDoc.data();
+        allData.push(...chunkData.data);
+      }
+    }
+    
+    console.log(`📊 Loaded ${allData.length} previous court records from Firebase`);
+    console.log(`📅 Last updated: ${metadata.timestamp ? metadata.timestamp.toDate() : 'Unknown'}`);
+    return allData;
+    
   } catch (error) {
     console.error('❌ Error loading previous data from Firebase:', error);
     console.log('🔍 Will treat this as first run');
@@ -85,18 +103,51 @@ async function loadPreviousData() {
   }
 }
 
-// Function to save current data to Firebase
+// Function to save current data to Firebase (chunked)
 async function saveCurrentData(data) {
   try {
     console.log('💾 Saving current data to Firebase...');
     
-    const docRef = db.collection(COLLECTION_NAME).doc(DOCUMENT_ID);
-    await docRef.set({
+    // Split data into chunks
+    const chunks = [];
+    for (let i = 0; i < data.length; i += CHUNK_SIZE) {
+      chunks.push(data.slice(i, i + CHUNK_SIZE));
+    }
+    
+    console.log(`📦 Splitting ${data.length} records into ${chunks.length} chunks`);
+    
+    // Use batch write for atomic operation
+    const batch = db.batch();
+    
+    // Save metadata
+    const metadataRef = db.collection(COLLECTION_NAME).doc(METADATA_DOC_ID);
+    batch.set(metadataRef, {
       timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      data: data
+      totalRecords: data.length,
+      totalChunks: chunks.length,
+      chunkSize: CHUNK_SIZE
     });
     
-    console.log('✅ Current data saved to Firebase for next comparison');
+    // Save each chunk
+    chunks.forEach((chunk, index) => {
+      const chunkRef = db.collection(COLLECTION_NAME).doc(`chunk_${index}`);
+      batch.set(chunkRef, {
+        data: chunk,
+        chunkIndex: index,
+        recordCount: chunk.length
+      });
+    });
+    
+    // Clean up old chunks if there are fewer chunks now
+    // (This handles the case where data size decreases)
+    for (let i = chunks.length; i < chunks.length + 10; i++) {
+      const oldChunkRef = db.collection(COLLECTION_NAME).doc(`chunk_${i}`);
+      batch.delete(oldChunkRef);
+    }
+    
+    await batch.commit();
+    console.log(`✅ Successfully saved ${chunks.length} chunks to Firebase`);
+    
   } catch (error) {
     console.error('❌ Error saving current data to Firebase:', error);
   }
